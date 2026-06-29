@@ -4,68 +4,94 @@ import streamlit as st
 from scipy import signal
 from scipy.io import wavfile
 
-st.set_page_config(page_title="Jammer Ultrasónico", page_icon="🔇", layout="centered")
+st.set_page_config(page_title="Jammer Audible Fuerte", page_icon="🔊", layout="centered")
 
-st.title("🔇 Jammer Ultrasónico (Casi Inaudible)")
-st.markdown("**Diseñado para interferir micrófonos sin molestar mucho al oído humano**")
+st.title("🔊 Jammer Audible Fuerte")
+st.markdown("**Optimizado para bocinas USB normales**")
 
-st.warning("⚠️ Requiere **buenos altavoces** con respuesta en agudos altos. En altavoces normales perderá efectividad.")
+st.warning("Este audio es **fuerte y molesto**. Úsalo con responsabilidad.")
 
+# ===================== CONTROLES =====================
 col1, col2 = st.columns(2)
 
 with col1:
-    duration = st.slider("Duración (segundos)", 10, 300, 60, step=10)
-    intensity = st.slider("Intensidad", 0.8, 2.8, 2.0, step=0.1)
+    duration = st.slider("Duración (segundos)", 10, 300, 60, step=5)
+    intensity = st.slider("Intensidad (Fuerza)", 1.0, 2.8, 2.0, step=0.1)
 
 with col2:
-    fs = st.selectbox("Frecuencia de muestreo", [44100, 48000, 96000], index=2)  # Mejor usar 96kHz
-    seed = st.number_input("Semilla", value=123, step=1)
+    fs = st.selectbox("Calidad de audio", [44100, 48000], index=0)
+    seed = st.number_input("Semilla", value=42, step=1)
 
-# Rango ultrasónico
-lowcut = st.slider("Frecuencia mínima (Hz)", 16000, 21000, 18500, step=100)
-highcut = st.slider("Frecuencia máxima (Hz)", 20000, 24000, 22500, step=100)
+# Rango optimizado para micrófonos de celular
+st.subheader("Rango de Frecuencias")
+colf1, colf2 = st.columns(2)
+with colf1:
+    lowcut = st.slider("Frecuencia mínima (Hz)", 100, 800, 180, step=10)
+with colf2:
+    highcut = st.slider("Frecuencia máxima (Hz)", 3000, 8500, 6200, step=50)
 
-fade_ms = st.slider("Fade In/Out (ms)", 100, 1000, 300)
+fade_ms = st.slider("Fade In/Out (ms)", 50, 500, 120, step=20)
 
-if st.button("Generar Jammer Ultrasónico", type="primary"):
-    with st.spinner("Generando señal ultrasónica..."):
-        n_samples = int(duration * fs)
-        np.random.seed(seed)
+# ===================== FUNCIÓN PRINCIPAL =====================
+def generar_jammer_fuerte():
+    n_samples = int(duration * fs)
+    np.random.seed(seed)
 
-        # Ruido blanco (mejor para ultrasonido)
-        audio = np.random.randn(n_samples).astype(np.float64)
-        
-        # Filtro bandpass en rango ultrasónico
-        b, a = signal.butter(4, [lowcut, highcut], btype='bandpass', fs=fs)
-        jammer = signal.filtfilt(b, a, audio)
+    # Ruido base marrón (más denso)
+    white = np.random.randn(n_samples)
+    audio = np.cumsum(white).astype(np.float64)
+    audio -= np.mean(audio)
+    audio /= np.std(audio)
 
-        # Aumentar intensidad
-        jammer *= intensity
-        
-        # Normalizar
-        jammer = jammer / np.max(np.abs(jammer)) * 0.92
+    # Filtros fuertes para saturar micrófonos
+    b1, a1 = signal.butter(3, [lowcut, highcut], btype='bandpass', fs=fs)
+    b2, a2 = signal.butter(4, [900, 4800], btype='bandpass', fs=fs)   # Zona crítica
 
-        # Fade
-        fade_samples = int(fade_ms * fs / 1000)
+    filtered1 = signal.filtfilt(b1, a1, audio)
+    filtered2 = signal.filtfilt(b2, a2, audio)
+
+    # Mezcla agresiva
+    jammer = 0.3 * audio + 0.45 * filtered1 + 0.55 * filtered2
+    jammer = jammer * intensity
+
+    # Normalizar fuerte
+    jammer = jammer / np.max(np.abs(jammer)) * 0.94
+
+    # Fade rápido
+    fade_samples = int(fade_ms * fs / 1000)
+    if fade_samples * 2 < n_samples:
         envelope = np.ones(n_samples)
-        envelope[:fade_samples] = np.linspace(0, 1, fade_samples)
-        envelope[-fade_samples:] = np.linspace(1, 0, fade_samples)
+        envelope[:fade_samples] = np.linspace(0.0, 1.0, fade_samples)
+        envelope[-fade_samples:] = np.linspace(1.0, 0.0, fade_samples)
         jammer *= envelope
 
-        # Exportar
-        audio_int16 = np.int16(jammer * 32767)
-        buffer = io.BytesIO()
-        wavfile.write(buffer, fs, audio_int16)
-        buffer.seek(0)
+    # Convertir a WAV
+    audio_int16 = np.int16(jammer * 32767)
+    buffer = io.BytesIO()
+    wavfile.write(buffer, fs, audio_int16)
+    buffer.seek(0)
 
-        st.success("Jammer Ultrasónico generado")
-        st.audio(buffer, format="audio/wav")
+    return buffer
 
-        st.download_button(
-            label="⬇️ Descargar WAV",
-            data=buffer.getvalue(),
-            file_name=f"jammer_ultrasonico_{lowcut}-{highcut}Hz_{duration}s.wav",
-            mime="audio/wav"
-        )
+# ===================== BOTÓN =====================
+if st.button("🔊 GENERAR JAMMER FUERTE", type="primary", use_container_width=True):
+    with st.spinner("Generando audio fuerte..."):
+        buffer = generar_jammer_fuerte()
 
-        st.info("Prueba con volumen alto y altavoces de buena calidad.")
+    st.success("✅ Audio generado correctamente")
+
+    st.audio(buffer, format="audio/wav")
+
+    st.download_button(
+        label="⬇️ Descargar archivo WAV",
+        data=buffer.getvalue(),
+        file_name=f"jammer_fuerte_{duration}s.wav",
+        mime="audio/wav"
+    )
+
+    st.info("**Instrucciones de uso:**\n"
+            "• Conecta tus bocinas USB\n"
+            "• Sube el volumen al **máximo**\n"
+            "• Colócalas lo más cerca posible del celular / grabadora")
+
+st.caption("Versión audible fuerte optimizada para micrófonos de celulares")
