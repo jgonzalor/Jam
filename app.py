@@ -4,311 +4,68 @@ import streamlit as st
 from scipy import signal
 from scipy.io import wavfile
 
+st.set_page_config(page_title="Jammer Ultrasónico", page_icon="🔇", layout="centered")
 
-# ============================================================
-# APP STREAMLIT - RUIDO DE ENMASCARAMIENTO AMBIENTAL
-# Archivo principal: app.py
-# ============================================================
+st.title("🔇 Jammer Ultrasónico (Casi Inaudible)")
+st.markdown("**Diseñado para interferir micrófonos sin molestar mucho al oído humano**")
 
-st.set_page_config(
-    page_title="Privacidad Ambiental",
-    page_icon="🔊",
-    layout="centered"
-)
-
-
-# ============================================================
-# FUNCIONES DE AUDIO
-# ============================================================
-
-def generar_ruido_base(tipo_ruido, n_samples, seed=None):
-    rng = np.random.default_rng(seed)
-
-    if tipo_ruido == "Blanco":
-        audio = rng.normal(0, 1, n_samples)
-
-    elif tipo_ruido == "Marrón":
-        white = rng.normal(0, 1, n_samples)
-        audio = np.cumsum(white)
-
-    else:
-        # Ruido rosa aproximado
-        white = rng.normal(0, 1, n_samples)
-        b, a = signal.butter(1, 0.08, btype="lowpass")
-        audio = signal.lfilter(b, a, white)
-
-    return audio
-
-
-def aplicar_filtro(audio, fs, lowcut, highcut):
-    nyquist = fs / 2
-
-    lowcut = max(20, float(lowcut))
-    highcut = min(float(highcut), nyquist - 100)
-
-    if lowcut >= highcut:
-        return audio
-
-    b, a = signal.butter(
-        3,
-        [lowcut, highcut],
-        btype="bandpass",
-        fs=fs
-    )
-
-    audio_filtrado = signal.filtfilt(b, a, audio)
-    return audio_filtrado
-
-
-def normalizar_audio(audio, volumen):
-    audio = audio.astype(np.float64)
-    audio = audio - np.mean(audio)
-
-    peak = np.max(np.abs(audio))
-
-    if peak > 0:
-        audio = audio / peak
-
-    volumen = min(max(float(volumen), 0.05), 0.95)
-    audio = audio * volumen
-
-    return audio
-
-
-def aplicar_fade(audio, fs, fade_ms):
-    n_samples = len(audio)
-    fade_samples = int((fade_ms / 1000) * fs)
-    fade_samples = min(fade_samples, n_samples // 2)
-
-    if fade_samples <= 0:
-        return audio
-
-    envelope = np.ones(n_samples)
-
-    envelope[:fade_samples] = np.linspace(0.0, 1.0, fade_samples)
-    envelope[-fade_samples:] = np.linspace(1.0, 0.0, fade_samples)
-
-    audio = audio * envelope
-
-    return audio
-
-
-def generar_audio_enmascaramiento(
-    duration,
-    fs,
-    tipo_ruido,
-    volumen,
-    lowcut,
-    highcut,
-    fade_ms,
-    seed
-):
-    n_samples = int(duration * fs)
-
-    audio = generar_ruido_base(
-        tipo_ruido=tipo_ruido,
-        n_samples=n_samples,
-        seed=seed
-    )
-
-    audio = aplicar_filtro(
-        audio=audio,
-        fs=fs,
-        lowcut=lowcut,
-        highcut=highcut
-    )
-
-    audio = normalizar_audio(
-        audio=audio,
-        volumen=volumen
-    )
-
-    audio = aplicar_fade(
-        audio=audio,
-        fs=fs,
-        fade_ms=fade_ms
-    )
-
-    audio_int16 = np.int16(audio * 32767)
-
-    buffer = io.BytesIO()
-    wavfile.write(buffer, fs, audio_int16)
-    buffer.seek(0)
-
-    return audio, buffer
-
-
-def nombre_archivo(tipo_ruido, duration):
-    tipo = tipo_ruido.lower()
-    tipo = tipo.replace("ó", "o")
-    tipo = tipo.replace("á", "a")
-    tipo = tipo.replace("é", "e")
-    tipo = tipo.replace("í", "i")
-    tipo = tipo.replace("ú", "u")
-    tipo = tipo.replace("ñ", "n")
-
-    return f"ruido_enmascaramiento_{tipo}_{duration}s.wav"
-
-
-# ============================================================
-# INTERFAZ PRINCIPAL
-# ============================================================
-
-st.title("🔊 Generador de Ruido de Enmascaramiento Ambiental")
-
-st.markdown(
-    """
-Esta herramienta genera audio audible de fondo para **privacidad ambiental**
-en reuniones, oficinas o espacios propios/autorizados.
-"""
-)
-
-st.warning(
-    "Esta app no bloquea micrófonos, no garantiza impedir grabaciones y no utiliza ultrasonido. "
-    "Su función es generar ruido audible de fondo para reducir la claridad de conversaciones en el ambiente."
-)
-
-st.divider()
+st.warning("⚠️ Requiere **buenos altavoces** con respuesta en agudos altos. En altavoces normales perderá efectividad.")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    duration = st.slider(
-        "Duración del audio",
-        min_value=5,
-        max_value=600,
-        value=60,
-        step=5,
-        help="Duración en segundos."
-    )
-
-    tipo_ruido = st.selectbox(
-        "Tipo de ruido",
-        options=["Rosa", "Blanco", "Marrón"],
-        index=0,
-        help="El ruido rosa suele ser más cómodo para uso prolongado."
-    )
-
-    volumen = st.slider(
-        "Volumen interno del archivo",
-        min_value=0.10,
-        max_value=0.95,
-        value=0.65,
-        step=0.05
-    )
+    duration = st.slider("Duración (segundos)", 10, 300, 60, step=10)
+    intensity = st.slider("Intensidad", 0.8, 2.8, 2.0, step=0.1)
 
 with col2:
-    fs = st.selectbox(
-        "Frecuencia de muestreo",
-        options=[22050, 44100, 48000],
-        index=1
-    )
+    fs = st.selectbox("Frecuencia de muestreo", [44100, 48000, 96000], index=2)  # Mejor usar 96kHz
+    seed = st.number_input("Semilla", value=123, step=1)
 
-    lowcut = st.slider(
-        "Frecuencia mínima Hz",
-        min_value=20,
-        max_value=1000,
-        value=250,
-        step=10
-    )
+# Rango ultrasónico
+lowcut = st.slider("Frecuencia mínima (Hz)", 16000, 21000, 18500, step=100)
+highcut = st.slider("Frecuencia máxima (Hz)", 20000, 24000, 22500, step=100)
 
-    highcut = st.slider(
-        "Frecuencia máxima Hz",
-        min_value=1000,
-        max_value=10000,
-        value=4500,
-        step=100
-    )
+fade_ms = st.slider("Fade In/Out (ms)", 100, 1000, 300)
 
-    fade_ms = st.slider(
-        "Fade in/out ms",
-        min_value=50,
-        max_value=2000,
-        value=300,
-        step=50
-    )
+if st.button("Generar Jammer Ultrasónico", type="primary"):
+    with st.spinner("Generando señal ultrasónica..."):
+        n_samples = int(duration * fs)
+        np.random.seed(seed)
 
-seed_enabled = st.checkbox("Usar semilla fija", value=True)
+        # Ruido blanco (mejor para ultrasonido)
+        audio = np.random.randn(n_samples).astype(np.float64)
+        
+        # Filtro bandpass en rango ultrasónico
+        b, a = signal.butter(4, [lowcut, highcut], btype='bandpass', fs=fs)
+        jammer = signal.filtfilt(b, a, audio)
 
-if seed_enabled:
-    seed = st.number_input(
-        "Semilla",
-        min_value=0,
-        max_value=999999,
-        value=42,
-        step=1
-    )
-else:
-    seed = None
+        # Aumentar intensidad
+        jammer *= intensity
+        
+        # Normalizar
+        jammer = jammer / np.max(np.abs(jammer)) * 0.92
 
+        # Fade
+        fade_samples = int(fade_ms * fs / 1000)
+        envelope = np.ones(n_samples)
+        envelope[:fade_samples] = np.linspace(0, 1, fade_samples)
+        envelope[-fade_samples:] = np.linspace(1, 0, fade_samples)
+        jammer *= envelope
 
-st.divider()
+        # Exportar
+        audio_int16 = np.int16(jammer * 32767)
+        buffer = io.BytesIO()
+        wavfile.write(buffer, fs, audio_int16)
+        buffer.seek(0)
 
-generar = st.button("🎧 Generar audio", type="primary")
-
-
-if generar:
-    if lowcut >= highcut:
-        st.error("La frecuencia mínima debe ser menor que la frecuencia máxima.")
-    else:
-        with st.spinner("Generando audio..."):
-            audio, buffer = generar_audio_enmascaramiento(
-                duration=duration,
-                fs=fs,
-                tipo_ruido=tipo_ruido,
-                volumen=volumen,
-                lowcut=lowcut,
-                highcut=highcut,
-                fade_ms=fade_ms,
-                seed=seed
-            )
-
-            wav_bytes = buffer.getvalue()
-
-        st.success("Audio generado correctamente.")
-
-        st.subheader("Reproductor")
-
-        st.audio(
-            wav_bytes,
-            format="audio/wav"
-        )
+        st.success("Jammer Ultrasónico generado")
+        st.audio(buffer, format="audio/wav")
 
         st.download_button(
-            label="⬇️ Descargar archivo WAV",
-            data=wav_bytes,
-            file_name=nombre_archivo(tipo_ruido, duration),
+            label="⬇️ Descargar WAV",
+            data=buffer.getvalue(),
+            file_name=f"jammer_ultrasonico_{lowcut}-{highcut}Hz_{duration}s.wav",
             mime="audio/wav"
         )
 
-        st.subheader("Vista previa de la señal")
-
-        preview_seconds = min(3, duration)
-        preview_samples = int(preview_seconds * fs)
-
-        st.line_chart(audio[:preview_samples])
-
-        st.subheader("Resumen técnico")
-
-        c1, c2, c3 = st.columns(3)
-
-        with c1:
-            st.metric("Duración", f"{duration}s")
-
-        with c2:
-            st.metric("Muestreo", f"{fs} Hz")
-
-        with c3:
-            st.metric("Rango", f"{lowcut}-{highcut} Hz")
-
-
-st.divider()
-
-st.info(
-    "Uso recomendado: volumen moderado, bocinas comunes y aviso previo a los participantes "
-    "cuando se utilice en una reunión o espacio compartido."
-)
-
-st.caption(
-    "Versión segura orientada a privacidad ambiental mediante ruido audible de enmascaramiento."
-)
+        st.info("Prueba con volumen alto y altavoces de buena calidad.")
