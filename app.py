@@ -7,7 +7,7 @@ from scipy.io import wavfile
 
 # ============================================================
 # APP STREAMLIT - RUIDO DE ENMASCARAMIENTO AMBIENTAL
-# Archivo principal recomendado: app.py
+# Archivo principal: app.py
 # ============================================================
 
 st.set_page_config(
@@ -17,7 +17,11 @@ st.set_page_config(
 )
 
 
-def generar_ruido_base(tipo_ruido: str, n_samples: int, seed: int | None = None):
+# ============================================================
+# FUNCIONES DE AUDIO
+# ============================================================
+
+def generar_ruido_base(tipo_ruido, n_samples, seed=None):
     rng = np.random.default_rng(seed)
 
     if tipo_ruido == "Blanco":
@@ -52,12 +56,13 @@ def aplicar_filtro(audio, fs, lowcut, highcut):
         fs=fs
     )
 
-    return signal.filtfilt(b, a, audio)
+    audio_filtrado = signal.filtfilt(b, a, audio)
+    return audio_filtrado
 
 
 def normalizar_audio(audio, volumen):
     audio = audio.astype(np.float64)
-    audio -= np.mean(audio)
+    audio = audio - np.mean(audio)
 
     peak = np.max(np.abs(audio))
 
@@ -79,10 +84,13 @@ def aplicar_fade(audio, fs, fade_ms):
         return audio
 
     envelope = np.ones(n_samples)
+
     envelope[:fade_samples] = np.linspace(0.0, 1.0, fade_samples)
     envelope[-fade_samples:] = np.linspace(1.0, 0.0, fade_samples)
 
-    return audio * envelope
+    audio = audio * envelope
+
+    return audio
 
 
 def generar_audio_enmascaramiento(
@@ -103,9 +111,23 @@ def generar_audio_enmascaramiento(
         seed=seed
     )
 
-    audio = aplicar_filtro(audio, fs, lowcut, highcut)
-    audio = normalizar_audio(audio, volumen)
-    audio = aplicar_fade(audio, fs, fade_ms)
+    audio = aplicar_filtro(
+        audio=audio,
+        fs=fs,
+        lowcut=lowcut,
+        highcut=highcut
+    )
+
+    audio = normalizar_audio(
+        audio=audio,
+        volumen=volumen
+    )
+
+    audio = aplicar_fade(
+        audio=audio,
+        fs=fs,
+        fade_ms=fade_ms
+    )
 
     audio_int16 = np.int16(audio * 32767)
 
@@ -117,19 +139,26 @@ def generar_audio_enmascaramiento(
 
 
 def nombre_archivo(tipo_ruido, duration):
-    tipo = tipo_ruido.lower().replace("ó", "o")
+    tipo = tipo_ruido.lower()
+    tipo = tipo.replace("ó", "o")
+    tipo = tipo.replace("á", "a")
+    tipo = tipo.replace("é", "e")
+    tipo = tipo.replace("í", "i")
+    tipo = tipo.replace("ú", "u")
+    tipo = tipo.replace("ñ", "n")
+
     return f"ruido_enmascaramiento_{tipo}_{duration}s.wav"
 
 
 # ============================================================
-# INTERFAZ
+# INTERFAZ PRINCIPAL
 # ============================================================
 
 st.title("🔊 Generador de Ruido de Enmascaramiento Ambiental")
 
 st.markdown(
     """
-Herramienta para generar audio audible de fondo orientado a **privacidad ambiental**
+Esta herramienta genera audio audible de fondo para **privacidad ambiental**
 en reuniones, oficinas o espacios propios/autorizados.
 """
 )
@@ -138,6 +167,8 @@ st.warning(
     "Esta app no bloquea micrófonos, no garantiza impedir grabaciones y no utiliza ultrasonido. "
     "Su función es generar ruido audible de fondo para reducir la claridad de conversaciones en el ambiente."
 )
+
+st.divider()
 
 col1, col2 = st.columns(2)
 
@@ -211,7 +242,12 @@ else:
     seed = None
 
 
-if st.button("🎧 Generar audio", type="primary"):
+st.divider()
+
+generar = st.button("🎧 Generar audio", type="primary")
+
+
+if generar:
     if lowcut >= highcut:
         st.error("La frecuencia mínima debe ser menor que la frecuencia máxima.")
     else:
@@ -231,10 +267,48 @@ if st.button("🎧 Generar audio", type="primary"):
 
         st.success("Audio generado correctamente.")
 
-        st.audio(wav_bytes, format="audio/wav")
+        st.subheader("Reproductor")
+
+        st.audio(
+            wav_bytes,
+            format="audio/wav"
+        )
 
         st.download_button(
             label="⬇️ Descargar archivo WAV",
             data=wav_bytes,
             file_name=nombre_archivo(tipo_ruido, duration),
-            mime="
+            mime="audio/wav"
+        )
+
+        st.subheader("Vista previa de la señal")
+
+        preview_seconds = min(3, duration)
+        preview_samples = int(preview_seconds * fs)
+
+        st.line_chart(audio[:preview_samples])
+
+        st.subheader("Resumen técnico")
+
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            st.metric("Duración", f"{duration}s")
+
+        with c2:
+            st.metric("Muestreo", f"{fs} Hz")
+
+        with c3:
+            st.metric("Rango", f"{lowcut}-{highcut} Hz")
+
+
+st.divider()
+
+st.info(
+    "Uso recomendado: volumen moderado, bocinas comunes y aviso previo a los participantes "
+    "cuando se utilice en una reunión o espacio compartido."
+)
+
+st.caption(
+    "Versión segura orientada a privacidad ambiental mediante ruido audible de enmascaramiento."
+)
